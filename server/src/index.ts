@@ -86,6 +86,15 @@ io.on("connection", (socket) => {
     if (buildMsg) io.to(membership.roomName).emit("chat:message", buildMsg);
   });
 
+  socket.on("prompt:delete", (data: { objectId: string }) => {
+    const membership = worlds.getWorldForSocket(socket.id);
+    if (!membership || !data.objectId) return;
+
+    if (membership.world.deleteObject(data.objectId)) {
+      io.to(membership.roomName).emit("world:snapshot", membership.world.getSnapshot());
+    }
+  });
+
   socket.on(
     "player:move",
     (data: { position: { x: number; y: number; z: number }; rotation: { x: number; y: number } }) => {

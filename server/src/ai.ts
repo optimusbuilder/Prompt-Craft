@@ -1,9 +1,10 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import type { Voxel, StructureArchetype, MaterialSettings } from "@promptcraft/shared";
 
-const apiKey = (process.env.GEMINI_API_KEY ?? process.env.AI_API_KEY ?? "").replace(/"/g, "");
-
-const genAI = apiKey ? new GoogleGenerativeAI(apiKey) : null;
+function getGenAI() {
+  const apiKey = (process.env.GEMINI_API_KEY ?? process.env.AI_API_KEY ?? "").replace(/"/g, "");
+  return apiKey ? new GoogleGenerativeAI(apiKey) : null;
+}
 
 const SYSTEM_PROMPT = `You are the World Architect for Prompt-Craft, a Minecraft-style voxel game. Players type natural language descriptions and you convert them into voxel structures.
 
@@ -26,21 +27,18 @@ Return ONLY a valid JSON object with this exact schema (no markdown, no code fen
 Valid archetype values: "house", "tree", "pyramid", "arch", "fountain", "wall", "tower", "bridge", "bloom", "citadel", "dome", "relay", "spire"
 
 Rules:
-- Generate 40-150 voxels to create a recognizable structure
-- Each voxel is a 1x1x1 cube at integer coordinates
-- y=0 is ground level, build upward
-- Use hex color strings like "#ff0000"
-- Make structures that visually match the description
-- Be creative with shapes and make them interesting
-- Use emissive colors and higher bloom values for glowing parts
-- Keep structures within a 15x20x15 bounding box
-- Add architectural details (windows, doors, trim, decorations)
+- Generate 300 to 800 voxels to create a MAGNIFICENT, HIGHLY DETAILED, and RECOGNIZABLE structure.
+- Each voxel is a 1x1x1 cube at integer coordinates.
+- y=0 is ground level, build upward.
+- Use hex color strings like "#ff0000".
+- Be immensely creative and architectural. Include details like walls with thickness, hollow interiors, battlements, large tree branches, textured floors, windows, trims, and decorations.
+- DO NOT just make a solid cube. Use layers!
+- Use emissive colors and higher bloom values for glowing magical or illuminated parts.
+- Keep structures within a 40x40x40 bounding box.
 
 Examples:
-- "red barn" → barn shape with red walls (#cc3333), brown roof (#6b4400), white door (#ffffff)
-- "crystal tower" → tall tapered shape with cyan (#44ddff) and blue (#2266cc), high bloom
-- "cherry blossom tree" → brown trunk (#6b4400), pink canopy (#ffaacc)
-- "lighthouse" → tall white cylinder (#eeeeee), red bands (#cc2222), yellow light at top with bloom=0.9`;
+- "blue castle" → A massive tiered fortress with dark blue stone walls (#224488), cyan parapets (#44ccff), hollow courtyard, and glowing central spire.
+- "crystal monument" → Huge floating obelisk with a dense base, tapering intricately towards the top, high bloom.`;
 
 type AIResult = {
   archetype: StructureArchetype;
@@ -50,6 +48,7 @@ type AIResult = {
 };
 
 export async function generateStructureFromPrompt(prompt: string): Promise<AIResult | null> {
+  const genAI = getGenAI();
   if (!genAI) {
     console.log("[AI] No API key configured, using deterministic fallback");
     return null;
@@ -81,9 +80,9 @@ export async function generateStructureFromPrompt(prompt: string): Promise<AIRes
       return null;
     }
 
-    // Cap at 200 voxels
-    if (parsed.voxels.length > 200) {
-      parsed.voxels = parsed.voxels.slice(0, 200);
+    // Cap at 1000 voxels
+    if (parsed.voxels.length > 1000) {
+      parsed.voxels = parsed.voxels.slice(0, 1000);
     }
 
     // Filter and normalize voxels

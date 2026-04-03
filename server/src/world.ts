@@ -415,7 +415,7 @@ function createVoxelCluster(seed: number, archetype: StructureArchetype, palette
 
 /* ========== Object Creation ========== */
 
-function createObjectFromPrompt(prompt: string, index: number, position?: Vector3): SceneObject {
+function createObjectFromPrompt(prompt: string, index: number, position?: Vector3, rotation?: { x: number; y: number }): SceneObject {
   const seed = hashPrompt(prompt);
   const archetype = getArchetype(prompt);
   const palette = getPromptPalette(prompt, seed);
@@ -424,7 +424,12 @@ function createObjectFromPrompt(prompt: string, index: number, position?: Vector
   let y: number;
   let z: number;
 
-  if (position) {
+  if (position && rotation) {
+    const SPAWN_DISTANCE = 12;
+    x = Math.round(position.x - Math.sin(rotation.y) * SPAWN_DISTANCE);
+    y = Math.round(position.y) - 1;
+    z = Math.round(position.z - Math.cos(rotation.y) * SPAWN_DISTANCE);
+  } else if (position) {
     x = Math.round(position.x) + 3;
     y = Math.round(position.y) - 1;
     z = Math.round(position.z) + 3;
@@ -461,13 +466,19 @@ function createObjectFromAI(
     material: { roughness: number; metalness: number; emissive: string; bloom: number };
     accentColor: string;
   },
-  position?: Vector3
+  position?: Vector3,
+  rotation?: { x: number; y: number }
 ): SceneObject {
   let x: number;
   let y: number;
   let z: number;
 
-  if (position) {
+  if (position && rotation) {
+    const SPAWN_DISTANCE = 12;
+    x = Math.round(position.x - Math.sin(rotation.y) * SPAWN_DISTANCE);
+    y = Math.round(position.y) - 1;
+    z = Math.round(position.z - Math.cos(rotation.y) * SPAWN_DISTANCE);
+  } else if (position) {
     x = Math.round(position.x) + 3;
     y = Math.round(position.y) - 1;
     z = Math.round(position.z) + 3;
@@ -583,8 +594,8 @@ export class WorldState {
 
     const aiResult = await generateStructureFromPrompt(submission.prompt);
     const object = aiResult
-      ? createObjectFromAI(submission.prompt, aiResult, submission.position)
-      : createObjectFromPrompt(submission.prompt, this.totalPrompts - 1, submission.position);
+      ? createObjectFromAI(submission.prompt, aiResult, submission.position, submission.rotation)
+      : createObjectFromPrompt(submission.prompt, this.totalPrompts - 1, submission.position, submission.rotation);
 
     this.objects.set(object.id, object);
 
@@ -593,6 +604,16 @@ export class WorldState {
       metrics: this.getMetrics(now),
       usedAI: !!aiResult,
     };
+  }
+
+  hasObject(id: string): boolean {
+    return this.objects.has(id);
+  }
+
+  deleteObject(id: string): boolean {
+    if (!this.objects.has(id)) return false;
+    this.objects.delete(id);
+    return true;
   }
 
   addPlayer(id: string): { player: PlayerState; message: ChatMessage } {

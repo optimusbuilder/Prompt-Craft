@@ -66,6 +66,7 @@ export type WorldSnapshot = {
 export type PromptSubmission = {
   prompt: string;
   position?: Vector3;
+  rotation?: { x: number; y: number };
 };
 
 export type PlayerState = {

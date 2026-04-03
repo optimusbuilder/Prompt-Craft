@@ -3,14 +3,16 @@ import * as THREE from "three";
 import { useFrame } from "@react-three/fiber";
 import { Billboard, Text } from "@react-three/drei";
 import type { SceneObject } from "@promptcraft/shared";
+import { playPop, playDelete } from "../utils/audio";
 
-const BLOCK_REVEAL_DELAY = 0.02;
+const BLOCK_REVEAL_DELAY = 0.04;
 const POP_DURATION = 0.22;
-const MAX_ANIMATION_AGE_MS = 8000;
+const MAX_ANIMATION_AGE_MS = 25000;
 
 type InstancedVoxelsProps = {
   objects: SceneObject[];
   featuredId: string | null;
+  onObjectDelete?: (objectId: string) => void;
 };
 
 type VoxelInstance = {
@@ -18,6 +20,7 @@ type VoxelInstance = {
   scale: number;
   revealDelay: number;
   createdAt: number;
+  objectId: string;
 };
 
 type VoxelBatch = {
@@ -71,6 +74,7 @@ function buildBatches(objects: SceneObject[]): VoxelBatch[] {
         scale: voxel.scale,
         revealDelay: animate ? index * BLOCK_REVEAL_DELAY : -1,
         createdAt: obj.createdAt,
+        objectId: obj.id,
       });
     });
   }
@@ -82,10 +86,11 @@ function buildBatches(objects: SceneObject[]): VoxelBatch[] {
   }));
 }
 
-function VoxelBatchMesh({ batch }: { batch: VoxelBatch }) {
+function VoxelBatchMesh({ batch, onDelete }: { batch: VoxelBatch; onDelete?: (id: string) => void }) {
   const meshRef = useRef<THREE.InstancedMesh>(null);
   const dummy = useMemo(() => new THREE.Object3D(), []);
   const isStaticRef = useRef(false);
+  const lastPoppedIndex = useRef<number>(-1);
   const maxRevealDelay = useMemo(
     () =>
       batch.instances.reduce(
@@ -126,6 +131,10 @@ function VoxelBatchMesh({ batch }: { batch: VoxelBatch }) {
         currentScale = 0.0001;
         allVisible = false;
       } else if (localAge < POP_DURATION) {
+        if (i > lastPoppedIndex.current) {
+          lastPoppedIndex.current = i;
+          playPop();
+        }
         const progress = localAge / POP_DURATION;
         const eased = 1 - Math.pow(1 - progress, 3);
         const pop = 1 + Math.sin(progress * Math.PI) * 0.22;
@@ -154,6 +163,13 @@ function VoxelBatchMesh({ batch }: { batch: VoxelBatch }) {
       args={[undefined, undefined, batch.instances.length]}
       castShadow
       receiveShadow
+      onClick={(e) => {
+        if (e.instanceId !== undefined && onDelete) {
+          e.stopPropagation();
+          playDelete();
+          onDelete(batch.instances[e.instanceId].objectId);
+        }
+      }}
     >
       <boxGeometry args={[1, 1, 1]} />
       <meshStandardMaterial
@@ -191,15 +207,7 @@ function StructureBeacon({ object }: { object: SceneObject }) {
   const beaconRef = useRef<THREE.Mesh>(null);
   const maxY = Math.max(...object.voxels.map((v) => v.y)) + object.position.y;
 
-  useFrame((state) => {
-    if (beaconRef.current) {
-      const t = state.clock.elapsedTime + object.createdAt * 0.001;
-      beaconRef.current.scale.y = 0.8 + Math.sin(t * 1.5) * 0.2;
-      (beaconRef.current.material as THREE.MeshBasicMaterial).opacity =
-        0.12 + Math.sin(t * 2) * 0.04;
-    }
-  });
-
+  // Static beacon with no bobbing to prevent drifting UI visuals
   return (
     <mesh
       ref={beaconRef}
@@ -209,20 +217,20 @@ function StructureBeacon({ object }: { object: SceneObject }) {
       <meshBasicMaterial
         color={object.material.emissive}
         transparent
-        opacity={0.12}
+        opacity={0.15}
         side={THREE.DoubleSide}
       />
     </mesh>
   );
 }
 
-export function InstancedVoxels({ objects, featuredId }: InstancedVoxelsProps) {
+export function InstancedVoxels({ objects, featuredId, onObjectDelete }: InstancedVoxelsProps) {
   const batches = useMemo(() => buildBatches(objects), [objects]);
 
   return (
     <group>
       {batches.map((batch) => (
-        <VoxelBatchMesh key={batch.key} batch={batch} />
+        <VoxelBatchMesh key={batch.key} batch={batch} onDelete={onObjectDelete} />
       ))}
       {objects.map((obj) => (
         <group key={obj.id}>

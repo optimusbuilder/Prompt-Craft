@@ -65,6 +65,7 @@ export default function App() {
   const [selectedSlot, setSelectedSlot] = useState(0);
   const [showDebug, setShowDebug] = useState(false);
   const [playerPos, setPlayerPos] = useState({ x: 0, y: 0, z: 0 });
+  const [playerRot, setPlayerRot] = useState({ x: 0, y: 0 });
   const [worldCode, setWorldCode] = useState<string | null>(() => getInitialWorldCode());
   const [worldCodeInput, setWorldCodeInput] = useState(() => getInitialWorldCode() ?? "");
   const [worldMenuMode, setWorldMenuMode] = useState<"menu" | "join">("menu");
@@ -170,6 +171,7 @@ export default function App() {
   const handlePlayerMove = useCallback(
     (position: { x: number; y: number; z: number }, rotation: { x: number; y: number }) => {
       setPlayerPos(position);
+      setPlayerRot(rotation);
 
       const now = Date.now();
       if (now - positionThrottle.current > 100) {
@@ -183,7 +185,7 @@ export default function App() {
   const handlePromptSubmit = useCallback(
     (prompt: string) => {
       if (!worldCode) return;
-      socket?.emit("prompt:submit", { prompt, position: playerPos });
+      socket?.emit("prompt:submit", { prompt, position: playerPos, rotation: playerRot });
       setBuildPulse((pulse) => pulse + 1);
       setChatOpen(false);
 
@@ -193,6 +195,10 @@ export default function App() {
     },
     [socket, playerPos, worldCode]
   );
+
+  const handleObjectDelete = useCallback((objectId: string) => {
+    socket?.emit("prompt:delete", { objectId });
+  }, [socket]);
 
   const handleChatClose = useCallback(() => {
     setChatOpen(false);
@@ -248,6 +254,7 @@ export default function App() {
         buildPulse={buildPulse}
         onPointerLockChange={handlePointerLockChange}
         onPlayerMove={handlePlayerMove}
+        onObjectDelete={handleObjectDelete}
       />
 
       {pointerLocked && worldCode && <div className="crosshair" />}

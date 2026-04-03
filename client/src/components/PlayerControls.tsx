@@ -1,7 +1,9 @@
-import { useRef, useEffect, useCallback } from "react";
-import { createPortal, useFrame, useThree } from "@react-three/fiber";
+import { useRef, useEffect, useCallback, useMemo } from "react";
 import * as THREE from "three";
+import { createPortal, useFrame, useThree } from "@react-three/fiber";
 import { getTerrainHeight } from "./Terrain";
+import type { SceneObject } from "@promptcraft/shared";
+import { playFootstep } from "../utils/audio";
 
 const MOVE_SPEED = 12;
 const SPRINT_MULTIPLIER = 1.8;
@@ -19,6 +21,7 @@ type PlayerControlsProps = {
   locked: boolean;
   armColor: string;
   buildPulse: number;
+  objects: SceneObject[];
   onLockChange: (locked: boolean) => void;
 };
 
@@ -27,6 +30,7 @@ export function PlayerControls({
   locked,
   armColor,
   buildPulse,
+  objects,
   onLockChange,
 }: PlayerControlsProps) {
   const { camera, gl, scene } = useThree();
@@ -38,9 +42,24 @@ export function PlayerControls({
   const positionRef = useRef(new THREE.Vector3(0, 20, 0));
   const armGroupRef = useRef<THREE.Group>(null);
   const walkPhase = useRef(0);
+  const lastStepPhase = useRef(0);
   const moveBlend = useRef(0);
   const swingStart = useRef<number | null>(null);
   const lastBuildPulse = useRef(buildPulse);
+
+  const collisionMap = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const obj of objects) {
+      for (const v of obj.voxels) {
+        const x = Math.round(obj.position.x + v.x);
+        const z = Math.round(obj.position.z + v.z);
+        const y = Math.round(obj.position.y + v.y);
+        const key = `${x}_${z}`;
+        map.set(key, Math.max(map.get(key) ?? -Infinity, y));
+      }
+    }
+    return map;
+  }, [objects]);
 
   useEffect(() => {
     const groundY = getTerrainHeight(0, 0);
@@ -129,23 +148,43 @@ export function PlayerControls({
       if (keys.current.has("KeyA") || keys.current.has("ArrowLeft")) moveDir.sub(right);
 
       const isMoving = moveDir.lengthSq() > 0;
-      if (isMoving) {
+      if (isMoving && isGrounded.current) {
         moveDir.normalize().multiplyScalar(speed * dt);
         walkPhase.current += dt * (keys.current.has("ShiftLeft") ? 12 : 8);
+        
+        if (walkPhase.current - lastStepPhase.current > Math.PI) {
+          playFootstep();
+          lastStepPhase.current = walkPhase.current;
+        }
       }
 
       moveBlend.current = THREE.MathUtils.damp(moveBlend.current, isMoving ? 1 : 0, 8, dt);
       velocity.current.y += GRAVITY * dt;
 
-      positionRef.current.x += moveDir.x;
-      positionRef.current.z += moveDir.z;
+      const nextX = positionRef.current.x + moveDir.x;
+      const nextZ = positionRef.current.z + moveDir.z;
+
+      const nextGroundY = getTerrainHeight(Math.round(nextX), Math.round(nextZ));
+      const nextBuildY = collisionMap.get(`${Math.round(nextX)}_${Math.round(nextZ)}`);
+      const nextFloorY = nextBuildY !== undefined ? Math.max(nextGroundY, nextBuildY + 0.5) : nextGroundY;
+
+      const canStep = nextFloorY - (positionRef.current.y - PLAYER_EYE_HEIGHT) <= 1.2;
+
+      if (canStep) {
+        positionRef.current.x = nextX;
+        positionRef.current.z = nextZ;
+      }
+
       positionRef.current.y += velocity.current.y * dt;
 
-      const groundY = getTerrainHeight(
+      const currentGroundY = getTerrainHeight(
         Math.round(positionRef.current.x),
         Math.round(positionRef.current.z)
       );
-      const feetY = groundY + PLAYER_EYE_HEIGHT;
+      const currentBuildY = collisionMap.get(`${Math.round(positionRef.current.x)}_${Math.round(positionRef.current.z)}`);
+      const floorY = currentBuildY !== undefined ? Math.max(currentGroundY, currentBuildY + 0.5) : currentGroundY;
+
+      const feetY = floorY + PLAYER_EYE_HEIGHT;
 
       if (positionRef.current.y <= feetY) {
         positionRef.current.y = feetY;
@@ -186,7 +225,8 @@ export function PlayerControls({
         if (swingStart.current < 0) {
           swingStart.current = state.clock.elapsedTime;
         }
-        const elapsed = state.clock.elapsedTime - swingStart.current;
+        const start = swingStart.current!;
+        const elapsed = state.clock.elapsedTime - start;
         if (elapsed >= 0 && elapsed <= 0.38) {
           const progress = elapsed / 0.38;
           const arc = Math.sin(progress * Math.PI);

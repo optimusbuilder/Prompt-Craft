@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { useFrame, useThree } from "@react-three/fiber";
 
-const DAY_LENGTH_SECONDS = 300;
+const DAY_LENGTH_SECONDS = 1200;
 const SKY_RADIUS = 380;
 
 const SKY_STOPS = [

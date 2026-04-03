@@ -19,6 +19,7 @@ type WorldSceneProps = {
   buildPulse: number;
   onPointerLockChange: (locked: boolean) => void;
   onPlayerMove?: (position: { x: number; y: number; z: number }, rotation: { x: number; y: number }) => void;
+  onObjectDelete?: (objectId: string) => void;
 };
 
 export function WorldScene({
@@ -32,6 +33,7 @@ export function WorldScene({
   buildPulse,
   onPointerLockChange,
   onPlayerMove,
+  onObjectDelete,
 }: WorldSceneProps) {
   return (
     <div className="scene-shell">
@@ -50,6 +52,7 @@ export function WorldScene({
           onPositionChange={onPlayerMove}
           armColor={localPlayerColor}
           buildPulse={buildPulse}
+          objects={objects}
         />
 
         <Terrain />
@@ -57,6 +60,7 @@ export function WorldScene({
         <InstancedVoxels
           objects={objects}
           featuredId={featuredObject?.id ?? null}
+          onObjectDelete={onObjectDelete}
         />
 
         <OtherPlayers players={players} localId={localPlayerId} />
