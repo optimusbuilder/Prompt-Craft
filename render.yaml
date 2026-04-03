@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: promptcraft-server
+    runtime: node
+    rootDir: .
+    buildCommand: npm install && npm run build -w server
+    startCommand: node server/dist/index.js
+    envVars:
+      - key: CLIENT_ORIGIN
+        sync: false
+      - key: PORT
+        value: "3001"
