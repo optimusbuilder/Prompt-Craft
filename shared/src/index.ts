@@ -1,80 +1,36 @@
-export type Vector3 = {
-  x: number;
-  y: number;
-  z: number;
-};
+export type Vector3 = { x: number; y: number; z: number };
+export type Quaternion = { x: number; y: number; z: number; w: number };
 
-export type Voxel = {
-  x: number;
-  y: number;
-  z: number;
-  color: string;
-  scale: number;
-};
-
-export type MaterialSettings = {
-  roughness: number;
-  metalness: number;
-  emissive: string;
-  bloom: number;
-};
-
-export type StructureArchetype =
-  | "spire"
-  | "bridge"
-  | "bloom"
-  | "citadel"
-  | "dome"
-  | "relay"
-  | "house"
-  | "tree"
-  | "pyramid"
-  | "arch"
-  | "fountain"
-  | "wall"
-  | "tower";
-
-export type SceneObject = {
+export type PlayerState = {
   id: string;
-  prompt: string;
-  archetype: StructureArchetype;
+  name: string;
+  color: string;
   position: Vector3;
-  voxels: Voxel[];
-  material: MaterialSettings;
-  accentColor: string;
+  quaternion: Quaternion;
+  velocity: Vector3;
+  health: number;
+};
+
+export type ProjectileState = {
+  id: string;
+  ownerId: string;
+  position: Vector3;
+  velocity: Vector3;
   createdAt: number;
 };
 
 export type WorldMetrics = {
-  objectCount: number;
-  totalPrompts: number;
-  districtCount: number;
-  archetypeVariety: number;
-  paletteVariety: number;
-  sessionAgeSeconds: number;
   playerCount: number;
+  projectileCount: number;
+  sessionAgeSeconds: number;
 };
 
 export type WorldSnapshot = {
-  objects: SceneObject[];
-  metrics: WorldMetrics;
   players: PlayerState[];
+  projectiles: ProjectileState[];
+  metrics: WorldMetrics;
   chatHistory: ChatMessage[];
   worldCode: string;
-};
-
-export type PromptSubmission = {
-  prompt: string;
-  position?: Vector3;
-  rotation?: { x: number; y: number };
-};
-
-export type PlayerState = {
-  id: string;
-  position: Vector3;
-  rotation: { x: number; y: number };
-  color: string;
-  name: string;
 };
 
 export type ChatMessage = {
@@ -84,4 +40,10 @@ export type ChatMessage = {
   text: string;
   timestamp: number;
   isSystem: boolean;
+};
+
+export type PlayerInput = {
+  position: Vector3;
+  quaternion: Quaternion;
+  velocity: Vector3;
 };

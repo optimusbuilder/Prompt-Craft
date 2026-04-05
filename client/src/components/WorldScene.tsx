@@ -1,72 +1,52 @@
 import { Canvas } from "@react-three/fiber";
-import type { SceneObject, WorldMetrics, PlayerState } from "@promptcraft/shared";
-import { Terrain } from "./Terrain";
-import { Sky } from "./Sky";
-import { PlayerControls } from "./PlayerControls";
-import { InstancedVoxels } from "./InstancedVoxels";
-import { OtherPlayers } from "./OtherPlayers";
+import type { PlayerState, ProjectileState } from "@promptcraft/shared";
+import { SkyWorld } from "./SkyWorld";
+import { JetControls } from "./JetControls";
+import { Jet } from "./Jet";
+import { Projectiles } from "./Projectiles";
 import { PostProcessing } from "./PostProcessing";
-import { Particles } from "./Particles";
+import * as THREE from "three";
 
 type WorldSceneProps = {
-  objects: SceneObject[];
-  metrics: WorldMetrics;
-  featuredObject: SceneObject | null;
   players: PlayerState[];
+  projectiles: ProjectileState[];
   localPlayerId: string | null;
   pointerLocked: boolean;
-  localPlayerColor: string;
-  buildPulse: number;
+  health: number;
   onPointerLockChange: (locked: boolean) => void;
-  onPlayerMove?: (position: { x: number; y: number; z: number }, rotation: { x: number; y: number }) => void;
-  onObjectDelete?: (objectId: string) => void;
+  onPositionChange: (pos: { position: THREE.Vector3; quaternion: THREE.Quaternion; velocity: THREE.Vector3 }) => void;
+  onFire: (pos: THREE.Vector3, vel: THREE.Vector3) => void;
 };
 
 export function WorldScene({
-  objects,
-  metrics,
-  featuredObject,
   players,
+  projectiles,
   localPlayerId,
   pointerLocked,
-  localPlayerColor,
-  buildPulse,
+  health,
   onPointerLockChange,
-  onPlayerMove,
-  onObjectDelete,
+  onPositionChange,
+  onFire
 }: WorldSceneProps) {
   return (
     <div className="scene-shell">
-      <Canvas
-        camera={{ fov: 70, near: 0.1, far: 500 }}
-        shadows
-        gl={{ antialias: true, alpha: false }}
-      >
-        <Sky />
-
-        <fog attach="fog" args={["#b8cce0", 40, 160]} />
-
-        <PlayerControls
-          locked={pointerLocked}
-          onLockChange={onPointerLockChange}
-          onPositionChange={onPlayerMove}
-          armColor={localPlayerColor}
-          buildPulse={buildPulse}
-          objects={objects}
+      <Canvas camera={{ fov: 75, near: 0.1, far: 8000 }} shadows gl={{ antialias: true, alpha: false }}>
+        <SkyWorld />
+        
+        <JetControls 
+          locked={pointerLocked} 
+          onPositionChange={onPositionChange} 
+          health={health}
+          onFire={onFire}
         />
 
-        <Terrain />
+        {players.map(p => (
+          p.id !== localPlayerId && p.health > 0 && (
+            <Jet key={p.id} color={p.color} position={p.position} quaternion={p.quaternion} />
+          )
+        ))}
 
-        <InstancedVoxels
-          objects={objects}
-          featuredId={featuredObject?.id ?? null}
-          onObjectDelete={onObjectDelete}
-        />
-
-        <OtherPlayers players={players} localId={localPlayerId} />
-
-        <Particles />
-
+        <Projectiles projectiles={projectiles} />
         <PostProcessing />
       </Canvas>
     </div>
