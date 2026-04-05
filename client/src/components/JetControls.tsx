@@ -1,16 +1,19 @@
 import { useRef, useEffect } from "react";
 import * as THREE from "three";
 import { useFrame, useThree } from "@react-three/fiber";
+import { Trail } from "@react-three/drei";
+import { getTerrainHeight } from "../utils/terrain";
 
 const MAX_SPEED = 180;
 const MIN_SPEED = 50;
 
-export function JetControls({ locked, onPositionChange, health, onFire }: { locked: boolean; onPositionChange: any; health: number; onFire: (pos: THREE.Vector3, vel: THREE.Vector3) => void }) {
+export function JetControls({ locked, onPositionChange, health, onFire, onCrash }: { locked: boolean; onPositionChange: any; health: number; onFire: (pos: THREE.Vector3, vel: THREE.Vector3) => void; onCrash: () => void }) {
   const { camera } = useThree();
   const velocity = useRef(new THREE.Vector3());
   const position = useRef(new THREE.Vector3((Math.random() - 0.5) * 400, 500, (Math.random() - 0.5) * 400));
   const quaternion = useRef(new THREE.Quaternion());
   const speed = useRef(100);
+  const localJetRef = useRef<THREE.Group>(null);
   
   const input = useRef({ pitch: 0, yaw: 0, roll: 0 });
   const keys = useRef(new Set<string>());
@@ -71,15 +74,28 @@ export function JetControls({ locked, onPositionChange, health, onFire }: { lock
     velocity.current.copy(forward).multiplyScalar(speed.current);
     position.current.addScaledVector(velocity.current, dt);
 
-    if (position.current.y < 10) {
-      position.current.y = 10;
-      velocity.current.y = Math.max(0, velocity.current.y);
-      const up = new THREE.Vector3(0, 1, 0);
-      quaternion.current.setFromUnitVectors(new THREE.Vector3(0,0,-1), forward.projectOnPlane(up).normalize());
+    const groundHeight = getTerrainHeight(position.current.x, position.current.z);
+    // Add 2 to the height due to the jet's physical size
+    if (position.current.y <= groundHeight + 2) {
+      if (speed.current > MIN_SPEED + 10) {
+         // Crash
+         position.current.y = groundHeight + 2;
+         onCrash();
+      } else {
+         // Bumping the ground safely at low speed (or spawn)
+         position.current.y = groundHeight + 2;
+         velocity.current.y = Math.max(0, velocity.current.y);
+         const up = new THREE.Vector3(0, 1, 0);
+         quaternion.current.setFromUnitVectors(new THREE.Vector3(0,0,-1), forward.projectOnPlane(up).normalize());
+      }
     }
 
     camera.position.copy(position.current);
     camera.quaternion.copy(quaternion.current);
+    if (localJetRef.current) {
+      localJetRef.current.position.copy(position.current);
+      localJetRef.current.quaternion.copy(quaternion.current);
+    }
 
     input.current.pitch = THREE.MathUtils.lerp(input.current.pitch, 0, dt * 5);
     input.current.yaw = THREE.MathUtils.lerp(input.current.yaw, 0, dt * 5);
@@ -98,5 +114,18 @@ export function JetControls({ locked, onPositionChange, health, onFire }: { lock
     }
   });
 
-  return null;
+  return (
+    <group ref={localJetRef}>
+      <Trail width={0.3} length={12} color="#ffffff" attenuation={(t) => t * t}>
+        <mesh position={[-3.3, -0.1, 0.3]} visible={false}>
+          <boxGeometry args={[0.1, 0.1, 0.1]} />
+        </mesh>
+      </Trail>
+      <Trail width={0.3} length={12} color="#ffffff" attenuation={(t) => t * t}>
+        <mesh position={[3.3, -0.1, 0.3]} visible={false}>
+          <boxGeometry args={[0.1, 0.1, 0.1]} />
+        </mesh>
+      </Trail>
+    </group>
+  );
 }

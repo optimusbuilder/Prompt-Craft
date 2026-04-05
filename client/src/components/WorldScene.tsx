@@ -6,28 +6,33 @@ import { JetControls } from "./JetControls";
 import { Jet } from "./Jet";
 import { Projectiles } from "./Projectiles";
 import { PostProcessing } from "./PostProcessing";
+import { ExplosionEffect } from "./ExplosionEffect";
 import * as THREE from "three";
 
 type WorldSceneProps = {
   players: PlayerState[];
   projectiles: ProjectileState[];
+  explosions: { id: string; position: THREE.Vector3; createdAt: number }[];
   localPlayerId: string | null;
   pointerLocked: boolean;
   health: number;
   onPointerLockChange: (locked: boolean) => void;
   onPositionChange: (pos: { position: THREE.Vector3; quaternion: THREE.Quaternion; velocity: THREE.Vector3 }) => void;
   onFire: (pos: THREE.Vector3, vel: THREE.Vector3) => void;
+  onCrash: () => void;
 };
 
 export function WorldScene({
   players,
   projectiles,
+  explosions,
   localPlayerId,
   pointerLocked,
   health,
   onPointerLockChange,
   onPositionChange,
-  onFire
+  onFire,
+  onCrash
 }: WorldSceneProps) {
   return (
     <div className="scene-shell">
@@ -41,6 +46,7 @@ export function WorldScene({
           onPositionChange={onPositionChange} 
           health={health}
           onFire={onFire}
+          onCrash={onCrash}
         />
 
         {players.map(p => (
@@ -50,10 +56,16 @@ export function WorldScene({
               color={p.color}
               position={p.position}
               quaternion={p.quaternion}
+              velocity={p.velocity}
+              isBot={p.isBot}
               name={p.name}
               health={p.health}
             />
           )
+        ))}
+
+        {explosions.map(e => (
+          <ExplosionEffect key={e.id} position={e.position} createdAt={e.createdAt} />
         ))}
 
         <Projectiles projectiles={projectiles} />

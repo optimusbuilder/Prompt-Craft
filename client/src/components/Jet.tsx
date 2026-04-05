@@ -1,29 +1,51 @@
 import { useRef } from "react";
 import * as THREE from "three";
 import { useFrame } from "@react-three/fiber";
-import { Html } from "@react-three/drei";
+import { Html, Trail } from "@react-three/drei";
 
 export function Jet({
   color = "#ffffff",
   position,
   quaternion,
+  velocity,
   name,
   health,
   isLocal = false,
+  isBot = false,
 }: {
   color?: string;
   position: { x: number; y: number; z: number };
   quaternion: { x: number; y: number; z: number; w: number };
+  velocity?: { x: number; y: number; z: number };
   name?: string;
   health?: number;
   isLocal?: boolean;
+  isBot?: boolean;
 }) {
   const trailRef = useRef<THREE.Mesh>(null);
   const trailRef2 = useRef<THREE.Mesh>(null);
   const glowRef = useRef<THREE.Mesh>(null);
+  const groupRef = useRef<THREE.Group>(null);
+  const targetQuat = useRef(new THREE.Quaternion(quaternion.x, quaternion.y, quaternion.z, quaternion.w));
 
-  useFrame((state) => {
+  useFrame((state, delta) => {
     const t = state.clock.elapsedTime;
+    
+    if (isBot && velocity) {
+      const vel = new THREE.Vector3(velocity.x, velocity.y, velocity.z);
+      if (vel.lengthSq() > 0.1) {
+        vel.normalize();
+        const up = new THREE.Vector3(0, 1, 0);
+        targetQuat.current.setFromUnitVectors(new THREE.Vector3(0, 0, -1), vel);
+      }
+    } else {
+      targetQuat.current.set(quaternion.x, quaternion.y, quaternion.z, quaternion.w);
+    }
+
+    if (groupRef.current) {
+      groupRef.current.quaternion.slerp(targetQuat.current, delta * 15);
+    }
+
     if (glowRef.current) {
       glowRef.current.scale.setScalar(0.8 + Math.sin(t * 12) * 0.2);
       (glowRef.current.material as THREE.MeshBasicMaterial).opacity = 0.5 + Math.sin(t * 8) * 0.2;
@@ -40,8 +62,8 @@ export function Jet({
 
   return (
     <group
+      ref={groupRef}
       position={[position.x, position.y, position.z]}
-      quaternion={[quaternion.x, quaternion.y, quaternion.z, quaternion.w]}
     >
       {/* Fuselage */}
       <mesh rotation={[-Math.PI / 2, 0, 0]}>
@@ -103,15 +125,19 @@ export function Jet({
         <meshBasicMaterial color="#ff4400" transparent opacity={0.2} />
       </mesh>
 
-      {/* Wing tip lights */}
-      <mesh position={[-3.3, -0.1, 0.3]}>
-        <sphereGeometry args={[0.08, 6, 6]} />
-        <meshBasicMaterial color="#ff0000" />
-      </mesh>
-      <mesh position={[3.3, -0.1, 0.3]}>
-        <sphereGeometry args={[0.08, 6, 6]} />
-        <meshBasicMaterial color="#00ff00" />
-      </mesh>
+      {/* Wing tip lights and Contrails */}
+      <Trail width={0.3} length={12} color="#ffffff" attenuation={(t) => t * t}>
+        <mesh position={[-3.3, -0.1, 0.3]}>
+          <sphereGeometry args={[0.08, 6, 6]} />
+          <meshBasicMaterial color="#ff0000" />
+        </mesh>
+      </Trail>
+      <Trail width={0.3} length={12} color="#ffffff" attenuation={(t) => t * t}>
+        <mesh position={[3.3, -0.1, 0.3]}>
+          <sphereGeometry args={[0.08, 6, 6]} />
+          <meshBasicMaterial color="#00ff00" />
+        </mesh>
+      </Trail>
 
       {/* Nametag (for remote players only) */}
       {!isLocal && name && (

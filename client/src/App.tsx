@@ -3,6 +3,7 @@ import { io, Socket } from "socket.io-client";
 import type { ChatMessage, KillEvent, PlayerState, ProjectileState, WorldMetrics, WorldSnapshot } from "@promptcraft/shared";
 import { WorldScene } from "./components/WorldScene";
 import { FlightHUD } from "./components/FlightHUD";
+import { Scoreboard } from "./components/Scoreboard";
 import { startEngine, stopEngine, updateEngine, playGunfire, playDamage, playExplosion, playRespawn } from "./utils/audio";
 import * as THREE from "three";
 
@@ -33,10 +34,15 @@ export default function App() {
   const [localPlayerId, setLocalPlayerId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [killFeed, setKillFeed] = useState<KillEvent[]>([]);
+  const [explosions, setExplosions] = useState<{ id: string; position: THREE.Vector3; createdAt: number }[]>([]);
   const [pointerLocked, setPointerLocked] = useState(false);
   const [worldCode, setWorldCode] = useState<string | null>(() => getInitialWorldCode());
   const [worldCodeInput, setWorldCodeInput] = useState(() => getInitialWorldCode() ?? "");
+  const [playerName, setPlayerName] = useState(() => (typeof localStorage !== "undefined" ? localStorage.getItem("playerName") || "" : ""));
   const [worldMenuMode, setWorldMenuMode] = useState<"menu" | "join">("menu");
+  const [showScoreboard, setShowScoreboard] = useState(false);
+  const [isChatting, setIsChatting] = useState(false);
+  const [chatDraft, setChatDraft] = useState("");
   
   const [health, setHealth] = useState(100);
   const [speed, setSpeed] = useState(0);
@@ -71,13 +77,17 @@ export default function App() {
   useEffect(() => {
     document.exitPointerLock?.();
     setPointerLocked(false);
-    setPlayers([]); setProjectiles([]); setMessages([]); setKillFeed([]);
+    setPlayers([]); setProjectiles([]); setMessages([]); setKillFeed([]); setExplosions([]);
     setLocalPlayerId(null); setIsConnected(false);
     setKills(0); setDeaths(0); setHealth(100);
 
     if (!worldCode) { setSocket(null); return; }
 
-    const nextSocket = io(serverUrl, { transports: ["websocket", "polling"], auth: { worldCode } });
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem("playerName", playerName);
+    }
+
+    const nextSocket = io(serverUrl, { transports: ["websocket", "polling"], auth: { worldCode, playerName } });
 
     nextSocket.on("connect", () => { setIsConnected(true); setLocalPlayerId(nextSocket.id ?? null); });
     nextSocket.on("disconnect", () => { setIsConnected(false); });
@@ -123,6 +133,17 @@ export default function App() {
       if (data.id === nextSocket.id) {
         playExplosion();
       }
+      setPlayers(prev => {
+        const p = prev.find(p => p.id === data.id);
+        if (p) {
+          setExplosions(ex => [...ex.slice(-20), { 
+            id: `exp_${data.id}_${Date.now()}`, 
+            position: new THREE.Vector3(p.position.x, p.position.y, p.position.z), 
+            createdAt: Date.now() 
+          }]);
+        }
+        return prev;
+      });
     });
 
     nextSocket.on("player:respawned", (p: PlayerState) => {
@@ -177,6 +198,35 @@ export default function App() {
 
   const handlePointerLockChange = useCallback((locked: boolean) => setPointerLocked(locked), []);
 
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Tab") {
+        e.preventDefault();
+        setShowScoreboard(true);
+      } else if (e.key === "t" || e.key === "T" || e.key === "Enter") {
+        // If we are playing, not chatting, and hit T, open chat
+        if (pointerLocked) {
+          e.preventDefault();
+          document.exitPointerLock?.();
+          setIsChatting(true);
+          setPointerLocked(false);
+        }
+      }
+    };
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.key === "Tab") {
+        e.preventDefault();
+        setShowScoreboard(false);
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    document.addEventListener("keyup", handleKeyUp);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      document.removeEventListener("keyup", handleKeyUp);
+    };
+  }, []);
+
   const handlePlayerMove = useCallback((state: any) => {
     const spd = state.velocity.length();
     setSpeed(spd);
@@ -206,18 +256,25 @@ export default function App() {
     });
   }, [socket, localPlayerId]);
 
+  const handleCrash = useCallback(() => {
+    if (!socket || !localPlayerId || health <= 0) return;
+    socket.emit("player:hit", { targetId: localPlayerId, damage: 1000 });
+  }, [socket, localPlayerId, health]);
+
   return (
     <div className="app-shell" onClick={handleShellClick}>
       {worldCode && (
         <WorldScene
           players={players}
           projectiles={projectiles}
+          explosions={explosions}
           localPlayerId={localPlayerId}
           pointerLocked={pointerLocked}
           health={health}
           onPointerLockChange={handlePointerLockChange}
           onPositionChange={handlePlayerMove}
           onFire={handleFire}
+          onCrash={handleCrash}
         />
       )}
 
@@ -247,12 +304,22 @@ export default function App() {
         />
       )}
 
+      {worldCode && showScoreboard && (
+        <Scoreboard players={players} localPlayerId={localPlayerId} />
+      )}
+
       {!worldCode && (
         <div className="world-gate">
           <div className="world-card">
             <div className="world-card__eyebrow">Multiplayer Dogfight</div>
             <h1>AERO-CRAFT</h1>
             <p>High-speed jet combat in a shared airspace. Spin up a room or join with a 4-character code.</p>
+            
+            <div className="world-player-info">
+              <label>Callsign (Optional)</label>
+              <input className="world-name-input" value={playerName} onChange={(e) => setPlayerName(e.target.value)} placeholder="Maverick" maxLength={16} />
+            </div>
+
             <div className="world-card__actions">
               <button className="world-button world-button--primary" onClick={() => { const code = generateWorldCode(); setWorldCodeInput(code); setWorldCode(code); }}>Deploy Airspace</button>
               <button className="world-button world-button--secondary" onClick={() => setWorldMenuMode("join")}>Join Airspace</button>
@@ -279,21 +346,48 @@ export default function App() {
         </div>
       )}
 
-      {worldCode && !pointerLocked && (
+      {worldCode && !pointerLocked && !isChatting && (
         <div className="enter-world-hint">
           <div>Airspace {worldCode}</div>
           <span>Click to deploy</span>
         </div>
       )}
 
-      <div className="chat-overlay chat-overlay--visible">
+      <div className={`chat-overlay ${isChatting ? "chat-overlay--active" : "chat-overlay--visible"}`}>
         <div className="chat-messages">
-          {messages.slice(-5).map((msg) => (
+          {messages.slice(-6).map((msg) => (
             <div key={msg.id} className={`chat-msg ${msg.isSystem ? "chat-msg--system" : ""}`}>
               {msg.isSystem ? <span>{msg.text}</span> : <span><span style={{color: msg.senderColor}}>{msg.sender}: </span>{msg.text}</span>}
             </div>
           ))}
         </div>
+        {isChatting && (
+          <div className="chat-input-container">
+            <input
+              autoFocus
+              type="text"
+              className="chat-input-field"
+              placeholder="Send message..."
+              value={chatDraft}
+              onChange={(e) => setChatDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  if (chatDraft.trim() && socket) {
+                    socket.emit("chat:send", chatDraft.trim());
+                  }
+                  setChatDraft("");
+                  setIsChatting(false);
+                } else if (e.key === "Escape") {
+                  setChatDraft("");
+                  setIsChatting(false);
+                }
+              }}
+              onBlur={() => {
+                if (!chatDraft) setIsChatting(false);
+              }}
+            />
+          </div>
+        )}
       </div>
     </div>
   );

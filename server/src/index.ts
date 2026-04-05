@@ -29,7 +29,19 @@ function emitState() {
     const players = world.getPlayers();
     const projectiles = world.getProjectiles();
     if (players.length > 0) {
-      io.to(`world:${world.getWorldCode()}`).emit("world:state", { players, projectiles });
+      world.updateBots(0.05); // 50ms
+      
+      // Process pending events from bots (chat, bullets)
+      while (world.pendingEvents.length > 0) {
+        const evt = world.pendingEvents.shift();
+        if (evt) io.to(`world:${world.getWorldCode()}`).emit(evt.type, evt.payload);
+      }
+
+      // Re-fetch players/projectiles after update
+      io.to(`world:${world.getWorldCode()}`).emit("world:state", { 
+        players: world.getPlayers(), 
+        projectiles: world.getProjectiles() 
+      });
     }
   }
 }
@@ -38,7 +50,8 @@ const stateTicker = setInterval(emitState, 50); // 20hz sync
 
 io.on("connection", (socket) => {
   const requestedCode = normalizeWorldCode(socket.handshake.auth?.worldCode as string | undefined);
-  const joined = worlds.joinWorld(socket.id, isValidWorldCode(requestedCode) ? requestedCode : undefined);
+  const playerName = socket.handshake.auth?.playerName as string | undefined;
+  const joined = worlds.joinWorld(socket.id, isValidWorldCode(requestedCode) ? requestedCode : undefined, playerName);
 
   socket.join(joined.roomName);
   socket.emit("world:snapshot", joined.world.getSnapshot());

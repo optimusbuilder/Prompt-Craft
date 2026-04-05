@@ -1,0 +1,64 @@
+
+> promptcraft@0.0.0 dev
+> concurrently -n client,server -c cyan,green "npm run dev -w client" "npm run dev -w server"
+
+[client] 
+[client] > @promptcraft/client@0.0.0 dev
+[client] > vite
+[client] 
+[server] 
+[server] > @promptcraft/server@0.0.0 dev
+[server] > tsx watch src/index.ts
+[server] 
+[client] 
+[client]   VITE v6.4.1  ready in 167 ms
+[client] 
+[client]   ➜  Local:   http://localhost:5173/
+[client]   ➜  Network: http://11.24.255.168:5173/
+[server] Aero-Craft server listening on port 3001
+[client] 2:40:14 PM [vite] (client) hmr update /src/App.tsx
+[server] 2:50:21 PM [tsx] change in ./src/world.ts Restarting...
+[server] c
+[server] node:internal/modules/run_main:107
+[server]     triggerUncaughtException(
+[server]     ^
+[server] Error [TransformError]: Transform failed with 1 error:
+[server] /Users/oluwaferanmioyelude/Documents/Prompt-Craft/server/src/world.ts:283:15: ERROR: Syntax error "`"
+[server]     at failureErrorWithLog (/Users/oluwaferanmioyelude/Documents/Prompt-Craft/node_modules/esbuild/lib/main.js:1748:15)
+[server]     at /Users/oluwaferanmioyelude/Documents/Prompt-Craft/node_modules/esbuild/lib/main.js:1017:50
+[server]     at responseCallbacks.<computed> (/Users/oluwaferanmioyelude/Documents/Prompt-Craft/node_modules/esbuild/lib/main.js:884:9)
+[server]     at handleIncomingPacket (/Users/oluwaferanmioyelude/Documents/Prompt-Craft/node_modules/esbuild/lib/main.js:939:12)
+[server]     at Socket.readFromStdout (/Users/oluwaferanmioyelude/Documents/Prompt-Craft/node_modules/esbuild/lib/main.js:862:7)
+[server]     at Socket.emit (node:events:508:28)
+[server]     at addChunk (node:internal/streams/readable:559:12)
+[server]     at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)
+[server]     at Readable.push (node:internal/streams/readable:390:5)
+[server]     at Pipe.onStreamRead (node:internal/stream_base_commons:189:23)
+[server] 
+[server] Node.js v24.13.0
+[server] 2:50:29 PM [tsx] change in ./src/index.ts Rerunning...
+[server] c
+[server] node:internal/modules/run_main:107
+[server]     triggerUncaughtException(
+[server]     ^
+[server] Error [TransformError]: Transform failed with 1 error:
+[server] /Users/oluwaferanmioyelude/Documents/Prompt-Craft/server/src/world.ts:283:15: ERROR: Syntax error "`"
+[server]     at failureErrorWithLog (/Users/oluwaferanmioyelude/Documents/Prompt-Craft/node_modules/esbuild/lib/main.js:1748:15)
+[server]     at /Users/oluwaferanmioyelude/Documents/Prompt-Craft/node_modules/esbuild/lib/main.js:1017:50
+[server]     at responseCallbacks.<computed> (/Users/oluwaferanmioyelude/Documents/Prompt-Craft/node_modules/esbuild/lib/main.js:884:9)
+[server]     at handleIncomingPacket (/Users/oluwaferanmioyelude/Documents/Prompt-Craft/node_modules/esbuild/lib/main.js:939:12)
+[server]     at Socket.readFromStdout (/Users/oluwaferanmioyelude/Documents/Prompt-Craft/node_modules/esbuild/lib/main.js:862:7)
+[server]     at Socket.emit (node:events:508:28)
+[server]     at addChunk (node:internal/streams/readable:559:12)
+[server]     at readableAddChunkPushByteMode (node:internal/streams/readable:510:3)
+[server]     at Readable.push (node:internal/streams/readable:390:5)
+[server]     at Pipe.onStreamRead (node:internal/stream_base_commons:189:23)
+[server] 
+[server] Node.js v24.13.0
+[client] 2:51:34 PM [vite] (client) hmr update /src/components/WorldScene.tsx
+[client] 2:51:48 PM [vite] (client) hmr update /src/components/Jet.tsx
+[client] 2:52:01 PM [vite] (client) hmr update /src/components/Jet.tsx
+[server] 2:53:10 PM [tsx] change in ./src/world.ts Rerunning...
+[server] cAero-Craft server listening on port 3001
+[server] 2:55:05 PM [tsx] change in ./src/world.ts Restarting...
+[server] cAero-Craft server listening on port 3001

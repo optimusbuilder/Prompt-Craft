@@ -11,6 +11,7 @@ export type PlayerState = {
   health: number;
   kills: number;
   deaths: number;
+  isBot?: boolean;
 };
 
 export type ProjectileState = {

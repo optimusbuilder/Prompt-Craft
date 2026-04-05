@@ -1,4 +1,5 @@
 import type { ChatMessage, KillEvent, PlayerState, ProjectileState, Vector3, WorldMetrics, WorldSnapshot, PlayerInput } from "@promptcraft/shared";
+import { v4 as uuidv4 } from "uuid";
 
 const WORLD_CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
@@ -23,6 +24,11 @@ const CALLSIGNS = [
   "Raven", "Cobra", "Wolf", "Ace", "Shadow"
 ];
 
+const BOT_NAMES = [
+  "Alpha", "Bravo", "Charlie", "Delta", "Echo",
+  "Foxtrot", "Golf", "Hotel", "India", "Juliet"
+];
+
 export class WorldState {
   private readonly worldCode: string;
   private players = new Map<string, PlayerState>();
@@ -32,6 +38,8 @@ export class WorldState {
   private sessionStartedAt = Date.now();
   private playerColorIndex = 0;
   private callsignIndex = 0;
+  private botNameIndex = 0;
+  public pendingEvents: { type: string; payload: any }[] = [];
 
   constructor(worldCode: string) {
     this.worldCode = worldCode;
@@ -59,11 +67,21 @@ export class WorldState {
     };
   }
 
-  addPlayer(id: string) {
+  addPlayer(id: string, customName?: string | null, isBot: boolean = false) {
     const color = PLAYER_COLORS[this.playerColorIndex % PLAYER_COLORS.length];
     this.playerColorIndex++;
-    const name = CALLSIGNS[this.callsignIndex % CALLSIGNS.length];
-    this.callsignIndex++;
+    let name = customName?.trim();
+    if (!name) {
+      if (isBot) {
+        name = `[BOT] ${BOT_NAMES[this.botNameIndex % BOT_NAMES.length]}`;
+        this.botNameIndex++;
+      } else {
+        name = CALLSIGNS[this.callsignIndex % CALLSIGNS.length];
+        this.callsignIndex++;
+      }
+    } else {
+      name = name.slice(0, 16);
+    }
     const position = { x: (Math.random() - 0.5) * 500, y: 300 + Math.random() * 100, z: (Math.random() - 0.5) * 500 };
     const player: PlayerState = {
       id, name, color,
@@ -73,6 +91,7 @@ export class WorldState {
       health: 100,
       kills: 0,
       deaths: 0,
+      isBot,
     };
     this.players.set(id, player);
     const msg = this.createSystemMessage(`${name} entered airspace`);
@@ -148,6 +167,178 @@ export class WorldState {
     return Array.from(this.players.values());
   }
 
+  updateBots(dt: number) {
+    const bots = this.getPlayers().filter(p => p.isBot);
+    const humans = this.getPlayers().filter(p => !p.isBot);
+    
+    // Spawn bots if we have humans but few total players
+    if (humans.length > 0 && this.players.size < 4 && Math.random() < 0.05) {
+      const newBotMatch = this.addPlayer(`bot_${uuidv4()}`, null, true);
+      this.pendingEvents.push({ type: "chat:message", payload: newBotMatch.message });
+      const snap = this.getSnapshot();
+      this.pendingEvents.push({ type: "world:snapshot", payload: snap }); // force full sync
+    }
+
+    const MIN_SPEED = 50;
+    const MAX_SPEED = 140;
+
+    for (const bot of bots) {
+      if (bot.health <= 0) continue;
+      
+      let targetPlayer: PlayerState | null = null;
+      let closestDist = Infinity;
+      
+      // Check bot collisions against projectiles
+      for (const proj of this.projectiles.values()) {
+        if (proj.ownerId === bot.id) continue;
+        
+        const age = (Date.now() - proj.createdAt) / 1000;
+        const cx = proj.position.x + proj.velocity.x * age;
+        const cy = proj.position.y + proj.velocity.y * age;
+        const cz = proj.position.z + proj.velocity.z * age;
+        
+        const bdx = cx - bot.position.x;
+        const bdy = cy - bot.position.y;
+        const bdz = cz - bot.position.z;
+        const dist = Math.sqrt(bdx*bdx + bdy*bdy + bdz*bdz);
+        
+        if (dist < 8) {
+          bot.health -= 20;
+          this.projectiles.delete(proj.id); // Destroy bullet
+          if (bot.health <= 0) {
+            bot.health = 0;
+            // Record kill
+            const killer = this.players.get(proj.ownerId);
+            if (killer) {
+              const killEvent = this.recordKill(killer.id, bot.id);
+              if (killEvent) {
+                this.pendingEvents.push({ type: "kill:event", payload: killEvent });
+                const killMsg = this.createSystemMessage(`☠️ ${killEvent.killerName} shot down ${killEvent.victimName}`);
+                this.pendingEvents.push({ type: "chat:message", payload: killMsg });
+              }
+            }
+            this.pendingEvents.push({ type: "player:destroyed", payload: { id: bot.id } });
+            
+            // Schedule bot respawn
+            setTimeout(() => {
+              if (this.players.has(bot.id)) {
+                this.respawnPlayer(bot.id);
+                this.pendingEvents.push({ type: "player:respawned", payload: bot });
+                this.pendingEvents.push({ type: "world:snapshot", payload: this.getSnapshot() });
+              }
+            }, 3000);
+            
+            break; // Bot is dead, stop checking projectiles
+          }
+        }
+      }
+      
+      if (bot.health <= 0) continue;
+      
+      // Find closest enemy target (can be a human or another bot)
+      for (const other of this.players.values()) {
+        if (other.id === bot.id || other.health <= 0) continue;
+        const dx = other.position.x - bot.position.x;
+        const dy = other.position.y - bot.position.y;
+        const dz = other.position.z - bot.position.z;
+        const distSq = dx * dx + dy * dy + dz * dz;
+        if (distSq < closestDist) {
+          closestDist = distSq;
+          targetPlayer = other;
+        }
+      }
+
+      let tx = 0, ty = 0, tz = -1;
+      let targetDist = 1;
+      let shouldFire = false;
+
+      if (targetPlayer) {
+        // Simple prediction based on target velocity
+        tx = targetPlayer.position.x + (targetPlayer.velocity.x * 0.5) - bot.position.x;
+        ty = targetPlayer.position.y + (targetPlayer.velocity.y * 0.5) - bot.position.y;
+        tz = targetPlayer.position.z + (targetPlayer.velocity.z * 0.5) - bot.position.z;
+        targetDist = Math.sqrt(tx * tx + ty * ty + tz * tz);
+        
+        if (targetDist > 0) {
+          tx /= targetDist; ty /= targetDist; tz /= targetDist;
+        }
+        
+        // Shoot logic: target is close and in front of us
+        if (targetDist < 1200) {
+          const vx = bot.velocity.x; const vy = bot.velocity.y; const vz = bot.velocity.z;
+          const speed = Math.sqrt(vx*vx + vy*vy + vz*vz) || 1;
+          const dot = (vx/speed * tx) + (vy/speed * ty) + (vz/speed * tz);
+          if (dot > 0.95 && Math.random() < 0.2) {
+            shouldFire = true;
+          }
+        }
+      } else {
+        // Just fly around horizontally
+        tx = bot.velocity.x; ty = 0; tz = bot.velocity.z;
+        const targetDist = Math.sqrt(tx * tx + ty * ty + tz * tz);
+        if (targetDist > 0) {
+          tx /= targetDist; ty /= targetDist; tz /= targetDist;
+        }
+      }
+      
+      // Avoid ground (simplified)
+      if (bot.position.y < 200) {
+        ty = 1; tx *= 0.5; tz *= 0.5; // pitch up strongly
+        const len = Math.sqrt(tx*tx + ty*ty + tz*tz);
+        tx /= len; ty /= len; tz /= len;
+      }
+
+      // Steer velocity towards desired direction
+      const STEER_RATE = targetPlayer ? 3.0 : 1.0;
+      bot.velocity.x += (tx * MAX_SPEED - bot.velocity.x) * dt * STEER_RATE;
+      bot.velocity.y += (ty * MAX_SPEED - bot.velocity.y) * dt * STEER_RATE;
+      bot.velocity.z += (tz * MAX_SPEED - bot.velocity.z) * dt * STEER_RATE;
+
+      // Restrict speed
+      const vlen = Math.sqrt(bot.velocity.x**2 + bot.velocity.y**2 + bot.velocity.z**2);
+      let newSpd = vlen;
+      if (vlen > MAX_SPEED) newSpd = MAX_SPEED;
+      if (vlen < MIN_SPEED) newSpd = MIN_SPEED;
+      if (vlen > 0) {
+         bot.velocity.x = (bot.velocity.x / vlen) * newSpd;
+         bot.velocity.y = (bot.velocity.y / vlen) * newSpd;
+         bot.velocity.z = (bot.velocity.z / vlen) * newSpd;
+      }
+
+      // Update position
+      bot.position.x += bot.velocity.x * dt;
+      bot.position.y += bot.velocity.y * dt;
+      bot.position.z += bot.velocity.z * dt;
+
+      // Keep bot in bounds (turn back if out of bounds)
+      if (Math.abs(bot.position.x) > 3000) bot.velocity.x *= -0.5;
+      if (Math.abs(bot.position.z) > 3000) bot.velocity.z *= -0.5;
+      
+      if (shouldFire) {
+        const velLen = Math.sqrt(bot.velocity.x**2 + bot.velocity.y**2 + bot.velocity.z**2);
+        const fNormX = bot.velocity.x / velLen;
+        const fNormY = bot.velocity.y / velLen;
+        const fNormZ = bot.velocity.z / velLen;
+        
+        const bulletVel = {
+          x: fNormX * 1000 + bot.velocity.x,
+          y: fNormY * 1000 + bot.velocity.y,
+          z: fNormZ * 1000 + bot.velocity.z
+        };
+        
+        const proj: ProjectileState = {
+          id: `proj_bot_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+          ownerId: bot.id,
+          position: { ...bot.position },
+          velocity: bulletVel,
+          createdAt: Date.now()
+        };
+        this.addProjectile(proj);
+        this.pendingEvents.push({ type: "projectile:fired", payload: proj });
+      }
+    }
+  }
+
   createChatMessage(senderId: string, text: string) {
     const player = this.players.get(senderId);
     if (!player) return null;
@@ -203,10 +394,10 @@ export class WorldDirectory {
     return { roomName: createRoomName(normalized), world, worldCode: normalized };
   }
 
-  joinWorld(socketId: string, requestedCode?: string | null) {
+  joinWorld(socketId: string, requestedCode?: string | null, playerName?: string | null) {
     const membership = this.getOrCreateWorld(requestedCode);
     this.socketToWorld.set(socketId, membership.worldCode);
-    const joinResult = membership.world.addPlayer(socketId);
+    const joinResult = membership.world.addPlayer(socketId, playerName);
     return { ...membership, ...joinResult };
   }
 

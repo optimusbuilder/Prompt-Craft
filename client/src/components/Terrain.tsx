@@ -1,11 +1,8 @@
 import { useMemo } from "react";
 import * as THREE from "three";
-import { createNoise2D } from "simplex-noise";
+import { getTerrainHeight, TERRAIN_SIZE, WATER_LEVEL, noise2D } from "../utils/terrain";
 
-const TERRAIN_SIZE = 8000;
 const SEGMENTS = 256;
-const MAX_HEIGHT = 420;
-const WATER_LEVEL = 0;
 
 function getTerrainColor(height: number): THREE.Color {
   if (height < WATER_LEVEL - 5) return new THREE.Color("#1a4a7a");
@@ -19,7 +16,6 @@ function getTerrainColor(height: number): THREE.Color {
 
 export function Terrain() {
   const { geometry, waterGeometry } = useMemo(() => {
-    const noise2D = createNoise2D();
     const geo = new THREE.PlaneGeometry(TERRAIN_SIZE, TERRAIN_SIZE, SEGMENTS, SEGMENTS);
     geo.rotateX(-Math.PI / 2);
 
@@ -30,25 +26,7 @@ export function Terrain() {
       const x = positions.getX(i);
       const z = positions.getZ(i);
 
-      // Multi-octave noise for natural-looking terrain
-      let height = 0;
-      height += noise2D(x * 0.0003, z * 0.0003) * MAX_HEIGHT;
-      height += noise2D(x * 0.0008, z * 0.0008) * (MAX_HEIGHT * 0.4);
-      height += noise2D(x * 0.002, z * 0.002) * (MAX_HEIGHT * 0.15);
-      height += noise2D(x * 0.006, z * 0.006) * (MAX_HEIGHT * 0.05);
-
-      // Flatten near edges to create ocean border
-      const edgeDist = Math.max(
-        Math.abs(x) / (TERRAIN_SIZE * 0.5),
-        Math.abs(z) / (TERRAIN_SIZE * 0.5)
-      );
-      const edgeFade = Math.max(0, 1 - Math.pow(edgeDist, 3));
-      height *= edgeFade;
-
-      // Push below water level at edges
-      if (edgeDist > 0.7) {
-        height -= (edgeDist - 0.7) * 300;
-      }
+      const height = getTerrainHeight(x, z);
 
       positions.setY(i, height);
 
