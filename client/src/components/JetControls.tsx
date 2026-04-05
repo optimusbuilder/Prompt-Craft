@@ -8,7 +8,7 @@ const MIN_SPEED = 50;
 export function JetControls({ locked, onPositionChange, health, onFire }: { locked: boolean; onPositionChange: any; health: number; onFire: (pos: THREE.Vector3, vel: THREE.Vector3) => void }) {
   const { camera } = useThree();
   const velocity = useRef(new THREE.Vector3());
-  const position = useRef(new THREE.Vector3(0, 500, 0));
+  const position = useRef(new THREE.Vector3((Math.random() - 0.5) * 400, 500, (Math.random() - 0.5) * 400));
   const quaternion = useRef(new THREE.Quaternion());
   const speed = useRef(100);
   

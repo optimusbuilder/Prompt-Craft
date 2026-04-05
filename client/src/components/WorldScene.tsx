@@ -1,6 +1,7 @@
 import { Canvas } from "@react-three/fiber";
 import type { PlayerState, ProjectileState } from "@promptcraft/shared";
 import { SkyWorld } from "./SkyWorld";
+import { Terrain } from "./Terrain";
 import { JetControls } from "./JetControls";
 import { Jet } from "./Jet";
 import { Projectiles } from "./Projectiles";
@@ -30,8 +31,10 @@ export function WorldScene({
 }: WorldSceneProps) {
   return (
     <div className="scene-shell">
-      <Canvas camera={{ fov: 75, near: 0.1, far: 8000 }} shadows gl={{ antialias: true, alpha: false }}>
+      <Canvas camera={{ fov: 75, near: 0.1, far: 12000 }} shadows gl={{ antialias: true, alpha: false }}>
+        <fog attach="fog" args={["#b8d5ea", 500, 6000]} />
         <SkyWorld />
+        <Terrain />
         
         <JetControls 
           locked={pointerLocked} 
@@ -42,7 +45,14 @@ export function WorldScene({
 
         {players.map(p => (
           p.id !== localPlayerId && p.health > 0 && (
-            <Jet key={p.id} color={p.color} position={p.position} quaternion={p.quaternion} />
+            <Jet
+              key={p.id}
+              color={p.color}
+              position={p.position}
+              quaternion={p.quaternion}
+              name={p.name}
+              health={p.health}
+            />
           )
         ))}
 

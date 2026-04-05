@@ -9,6 +9,8 @@ export type PlayerState = {
   quaternion: Quaternion;
   velocity: Vector3;
   health: number;
+  kills: number;
+  deaths: number;
 };
 
 export type ProjectileState = {
@@ -17,6 +19,16 @@ export type ProjectileState = {
   position: Vector3;
   velocity: Vector3;
   createdAt: number;
+};
+
+export type KillEvent = {
+  killerId: string;
+  killerName: string;
+  killerColor: string;
+  victimId: string;
+  victimName: string;
+  victimColor: string;
+  timestamp: number;
 };
 
 export type WorldMetrics = {
@@ -31,6 +43,7 @@ export type WorldSnapshot = {
   metrics: WorldMetrics;
   chatHistory: ChatMessage[];
   worldCode: string;
+  recentKills: KillEvent[];
 };
 
 export type ChatMessage = {

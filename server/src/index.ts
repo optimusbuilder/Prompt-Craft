@@ -64,16 +64,18 @@ io.on("connection", (socket) => {
     membership.world.damagePlayer(data.targetId, data.damage);
     const p = membership.world.getPlayers().find(p => p.id === data.targetId);
     if (p && p.health <= 0) {
-      const killer = membership.world.getPlayers().find(pl => pl.id === socket.id);
-      if (killer) {
-        const killMsg = membership.world.createSystemMessage(`☠️ ${killer.name} shot down ${p.name}`);
+      const killEvent = membership.world.recordKill(socket.id, data.targetId);
+      if (killEvent) {
+        io.to(membership.roomName).emit("kill:event", killEvent);
+        const killMsg = membership.world.createSystemMessage(`☠️ ${killEvent.killerName} shot down ${killEvent.victimName}`);
         io.to(membership.roomName).emit("chat:message", killMsg);
       }
       io.to(membership.roomName).emit("player:destroyed", { id: data.targetId });
       setTimeout(() => {
         const respawnMsg = membership.world.respawnPlayer(data.targetId);
         if (respawnMsg) io.to(membership.roomName).emit("chat:message", respawnMsg);
-        io.to(membership.roomName).emit("player:respawned", membership.world.getPlayers().find(p=>p.id===data.targetId));
+        const respawned = membership.world.getPlayers().find(p => p.id === data.targetId);
+        if (respawned) io.to(membership.roomName).emit("player:respawned", respawned);
       }, 3000);
     }
   });
@@ -95,7 +97,7 @@ io.on("connection", (socket) => {
 });
 
 server.listen(port, "0.0.0.0", () => {
-  console.log(`Server listening on port ${port}`);
+  console.log(`Aero-Craft server listening on port ${port}`);
 });
 
 process.on("SIGINT", () => process.exit(0));

@@ -1,4 +1,4 @@
-import type { ChatMessage, PlayerState, ProjectileState, Vector3, WorldMetrics, WorldSnapshot, PlayerInput } from "@promptcraft/shared";
+import type { ChatMessage, KillEvent, PlayerState, ProjectileState, Vector3, WorldMetrics, WorldSnapshot, PlayerInput } from "@promptcraft/shared";
 
 const WORLD_CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
@@ -16,17 +16,26 @@ export function isValidWorldCode(value: string | null | undefined): value is str
 
 const PLAYER_COLORS = ["#e74c3c", "#3498db", "#2ecc71", "#f39c12", "#9b59b6", "#1abc9c", "#e67e22", "#e91e63", "#00bcd4", "#8bc34a"];
 
+const CALLSIGNS = [
+  "Maverick", "Viper", "Iceman", "Goose", "Jester",
+  "Phoenix", "Rooster", "Hangman", "Merlin", "Cougar",
+  "Ghost", "Reaper", "Blaze", "Storm", "Hawk",
+  "Raven", "Cobra", "Wolf", "Ace", "Shadow"
+];
+
 export class WorldState {
   private readonly worldCode: string;
   private players = new Map<string, PlayerState>();
   private projectiles = new Map<string, ProjectileState>();
   private chatHistory: ChatMessage[] = [];
+  private recentKills: KillEvent[] = [];
   private sessionStartedAt = Date.now();
   private playerColorIndex = 0;
+  private callsignIndex = 0;
 
   constructor(worldCode: string) {
     this.worldCode = worldCode;
-    this.createSystemMessage(`World ${worldCode} radar active`);
+    this.createSystemMessage(`Airspace ${worldCode} online — weapons hot`);
   }
 
   getWorldCode() { return this.worldCode; }
@@ -46,23 +55,27 @@ export class WorldState {
       metrics: this.getMetrics(),
       chatHistory: [...this.chatHistory],
       worldCode: this.worldCode,
+      recentKills: [...this.recentKills],
     };
   }
 
   addPlayer(id: string) {
     const color = PLAYER_COLORS[this.playerColorIndex % PLAYER_COLORS.length];
     this.playerColorIndex++;
-    const name = `Pilot-${id.slice(-4)}`;
-    const position = { x: (Math.random() - 0.5) * 500, y: 100 + Math.random() * 50, z: (Math.random() - 0.5) * 500 };
+    const name = CALLSIGNS[this.callsignIndex % CALLSIGNS.length];
+    this.callsignIndex++;
+    const position = { x: (Math.random() - 0.5) * 500, y: 300 + Math.random() * 100, z: (Math.random() - 0.5) * 500 };
     const player: PlayerState = {
       id, name, color,
       position,
       quaternion: { x: 0, y: 0, z: 0, w: 1 },
       velocity: { x: 0, y: 0, z: -50 },
       health: 100,
+      kills: 0,
+      deaths: 0,
     };
     this.players.set(id, player);
-    const msg = this.createSystemMessage(`${name} entered airspace ${this.worldCode}`);
+    const msg = this.createSystemMessage(`${name} entered airspace`);
     return { player, message: msg };
   }
 
@@ -70,7 +83,7 @@ export class WorldState {
     const player = this.players.get(id);
     if (!player) return null;
     this.players.delete(id);
-    return this.createSystemMessage(`${player.name} left airspace ${this.worldCode}`);
+    return this.createSystemMessage(`${player.name} left airspace`);
   }
 
   updatePlayer(id: string, input: PlayerInput) {
@@ -88,12 +101,36 @@ export class WorldState {
     if (player.health < 0) player.health = 0;
   }
 
+  recordKill(killerId: string, victimId: string): KillEvent | null {
+    const killer = this.players.get(killerId);
+    const victim = this.players.get(victimId);
+    if (!killer || !victim) return null;
+
+    killer.kills++;
+    victim.deaths++;
+
+    const event: KillEvent = {
+      killerId: killer.id,
+      killerName: killer.name,
+      killerColor: killer.color,
+      victimId: victim.id,
+      victimName: victim.name,
+      victimColor: victim.color,
+      timestamp: Date.now(),
+    };
+
+    this.recentKills.push(event);
+    if (this.recentKills.length > 10) this.recentKills.shift();
+
+    return event;
+  }
+
   respawnPlayer(id: string) {
     const player = this.players.get(id);
     if (!player) return;
     player.health = 100;
-    player.position = { x: (Math.random() - 0.5) * 500, y: 100 + Math.random() * 50, z: (Math.random() - 0.5) * 500 };
-    return this.createSystemMessage(`🔄 ${player.name} respawned`);
+    player.position = { x: (Math.random() - 0.5) * 500, y: 300 + Math.random() * 100, z: (Math.random() - 0.5) * 500 };
+    return this.createSystemMessage(`🔄 ${player.name} back in the air`);
   }
 
   addProjectile(p: ProjectileState) {
@@ -127,7 +164,7 @@ export class WorldState {
   createSystemMessage(text: string) {
     const msg: ChatMessage = {
       id: `sys_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-      sender: "Server", senderColor: "#ffff55", text,
+      sender: "AWACS", senderColor: "#ffff55", text,
       timestamp: Date.now(), isSystem: true,
     };
     this.chatHistory.push(msg);
