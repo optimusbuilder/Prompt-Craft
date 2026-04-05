@@ -62,3 +62,6 @@
 [server] cAero-Craft server listening on port 3001
 [server] 2:55:05 PM [tsx] change in ./src/world.ts Restarting...
 [server] cAero-Craft server listening on port 3001
+[server] 3:17:02 PM [tsx] Previous process hasn't exited yet. Force killing...
+[client] npm run dev -w client exited with code SIGINT
+[server] npm run dev -w server exited with code 0
