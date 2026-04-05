@@ -27,21 +27,16 @@ app.get("/health", (_req, res) => {
 function emitState() {
   for (const world of worlds.getWorlds()) {
     const players = world.getPlayers();
-    const projectiles = world.getProjectiles();
     if (players.length > 0) {
-      world.updateBots(0.05); // 50ms
-      
-      // Process pending events from bots (chat, bullets)
+      world.tick(0.05); // 50ms
+
+      // Process pending events from world systems (chat, kills, bot fire)
       while (world.pendingEvents.length > 0) {
         const evt = world.pendingEvents.shift();
         if (evt) io.to(`world:${world.getWorldCode()}`).emit(evt.type, evt.payload);
       }
 
-      // Re-fetch players/projectiles after update
-      io.to(`world:${world.getWorldCode()}`).emit("world:state", { 
-        players: world.getPlayers(), 
-        projectiles: world.getProjectiles() 
-      });
+      io.to(`world:${world.getWorldCode()}`).emit("world:state", world.getStateUpdate());
     }
   }
 }
@@ -62,32 +57,39 @@ io.on("connection", (socket) => {
     if (membership) membership.world.updatePlayer(socket.id, data);
   });
 
-  socket.on("player:fire", (data: ProjectileState) => {
+  socket.on("player:fire", (data: Omit<ProjectileState, "ownerId" | "id" | "createdAt">) => {
     const membership = worlds.getWorldForSocket(socket.id);
     if (membership) {
-      membership.world.addProjectile(data);
-      io.to(membership.roomName).emit("projectile:fired", data);
+      const projectile: ProjectileState = {
+        id: `proj_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        ownerId: socket.id,
+        position: data.position,
+        velocity: data.velocity,
+        createdAt: Date.now(),
+      };
+      if (membership.world.addProjectile(projectile)) {
+        io.to(membership.roomName).emit("projectile:fired", projectile);
+      }
     }
   });
 
   socket.on("player:hit", (data: { targetId: string; damage: number }) => {
     const membership = worlds.getWorldForSocket(socket.id);
     if (!membership) return;
-    
-    membership.world.damagePlayer(data.targetId, data.damage);
-    const p = membership.world.getPlayers().find(p => p.id === data.targetId);
-    if (p && p.health <= 0) {
-      const killEvent = membership.world.recordKill(socket.id, data.targetId);
-      if (killEvent) {
-        io.to(membership.roomName).emit("kill:event", killEvent);
-        const killMsg = membership.world.createSystemMessage(`☠️ ${killEvent.killerName} shot down ${killEvent.victimName}`);
-        io.to(membership.roomName).emit("chat:message", killMsg);
-      }
-      io.to(membership.roomName).emit("player:destroyed", { id: data.targetId });
+
+    const hitResult = membership.world.applyHit(socket.id, data.targetId, data.damage);
+    if (!hitResult || !hitResult.destroyedPlayerId) return;
+    const destroyedId = hitResult.destroyedPlayerId;
+
+    if (hitResult.killEvent) io.to(membership.roomName).emit("kill:event", hitResult.killEvent);
+    if (hitResult.systemMessage) io.to(membership.roomName).emit("chat:message", hitResult.systemMessage);
+    io.to(membership.roomName).emit("player:destroyed", { id: destroyedId });
+
+    if (hitResult.shouldRespawn) {
       setTimeout(() => {
-        const respawnMsg = membership.world.respawnPlayer(data.targetId);
+        const respawnMsg = membership.world.respawnPlayer(destroyedId);
         if (respawnMsg) io.to(membership.roomName).emit("chat:message", respawnMsg);
-        const respawned = membership.world.getPlayers().find(p => p.id === data.targetId);
+        const respawned = membership.world.getPlayers().find((p) => p.id === destroyedId);
         if (respawned) io.to(membership.roomName).emit("player:respawned", respawned);
       }, 3000);
     }

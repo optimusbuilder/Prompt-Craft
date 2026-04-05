@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { io, Socket } from "socket.io-client";
-import type { ChatMessage, KillEvent, PlayerState, ProjectileState, WorldMetrics, WorldSnapshot } from "@promptcraft/shared";
+import type { ChatMessage, KillEvent, MatchState, PlayerState, ProjectileState, WorldMetrics, WorldSnapshot, WorldStateUpdate } from "@promptcraft/shared";
 import { WorldScene } from "./components/WorldScene";
 import { FlightHUD } from "./components/FlightHUD";
 import { Scoreboard } from "./components/Scoreboard";
@@ -25,12 +25,32 @@ function updateWorldUrl(worldCode: string | null) {
   window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
 }
 
+const DEFAULT_MATCH_STATE: MatchState = {
+  phase: "lobby",
+  roundNumber: 1,
+  scoreToWin: 10,
+  roundDurationSeconds: 300,
+  countdownRemainingSeconds: 0,
+  roundRemainingSeconds: 0,
+  winnerId: null,
+  winnerName: null,
+  winnerColor: null,
+  nextRoundInSeconds: 0,
+};
+
+function formatClock(seconds: number) {
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+}
+
 export default function App() {
   const [socket, setSocket] = useState<Socket | null>(null);
   const [players, setPlayers] = useState<PlayerState[]>([]);
   const [projectiles, setProjectiles] = useState<ProjectileState[]>([]);
   const [isConnected, setIsConnected] = useState(false);
   const [metrics, setMetrics] = useState<WorldMetrics>({ playerCount: 0, projectileCount: 0, sessionAgeSeconds: 0 });
+  const [match, setMatch] = useState<MatchState>(DEFAULT_MATCH_STATE);
   const [localPlayerId, setLocalPlayerId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [killFeed, setKillFeed] = useState<KillEvent[]>([]);
@@ -80,6 +100,7 @@ export default function App() {
     setPlayers([]); setProjectiles([]); setMessages([]); setKillFeed([]); setExplosions([]);
     setLocalPlayerId(null); setIsConnected(false);
     setKills(0); setDeaths(0); setHealth(100);
+    setMatch(DEFAULT_MATCH_STATE);
 
     if (!worldCode) { setSocket(null); return; }
 
@@ -96,6 +117,7 @@ export default function App() {
       setPlayers(snapshot.players);
       setProjectiles(snapshot.projectiles);
       setMetrics(snapshot.metrics);
+      setMatch(snapshot.match ?? DEFAULT_MATCH_STATE);
       setMessages(snapshot.chatHistory || []);
       setKillFeed(snapshot.recentKills || []);
       if (snapshot.worldCode && snapshot.worldCode !== worldCode) {
@@ -107,17 +129,21 @@ export default function App() {
       if (me) {
         setKills(me.kills);
         setDeaths(me.deaths);
+        setHealth(me.health);
       }
     });
 
-    nextSocket.on("world:state", (state: { players: PlayerState[], projectiles: ProjectileState[] }) => {
+    nextSocket.on("world:state", (state: WorldStateUpdate) => {
       setPlayers(state.players);
       setProjectiles(state.projectiles);
+      setMetrics(state.metrics);
+      setMatch(state.match);
       // Update our score from state
       const me = state.players.find(p => p.id === nextSocket.id);
       if (me) {
         setKills(me.kills);
         setDeaths(me.deaths);
+        setHealth(me.health);
       }
     });
 
@@ -131,6 +157,7 @@ export default function App() {
 
     nextSocket.on("player:destroyed", (data: { id: string }) => {
       if (data.id === nextSocket.id) {
+        setHealth(0);
         playExplosion();
       }
       setPlayers(prev => {
@@ -166,7 +193,7 @@ export default function App() {
 
   // Client-side collision detection
   useEffect(() => {
-    if (!socket || health <= 0 || !localPlayerId) return;
+    if (!socket || health <= 0 || !localPlayerId || match.phase !== "in_progress") return;
     const localP = players.find(p => p.id === localPlayerId);
     if (!localP) return;
 
@@ -190,7 +217,7 @@ export default function App() {
         playDamage();
       }
     }
-  }, [projectiles, socket, health, localPlayerId, players]);
+  }, [projectiles, socket, health, localPlayerId, players, match.phase]);
 
   const handleShellClick = useCallback(() => {
     if (!pointerLocked && worldCode) document.body.requestPointerLock();
@@ -245,21 +272,34 @@ export default function App() {
   }, [socket]);
 
   const handleFire = useCallback((pos: THREE.Vector3, vel: THREE.Vector3) => {
-    if (!socket) return;
+    if (!socket || match.phase !== "in_progress" || health <= 0) return;
     playGunfire();
     socket.emit("player:fire", {
-      id: `proj_${Date.now()}_${Math.random()}`,
-      ownerId: localPlayerId,
-      position: pos,
-      velocity: vel,
-      createdAt: Date.now()
+      position: { x: pos.x, y: pos.y, z: pos.z },
+      velocity: { x: vel.x, y: vel.y, z: vel.z },
     });
-  }, [socket, localPlayerId]);
+  }, [socket, match.phase, health]);
 
   const handleCrash = useCallback(() => {
-    if (!socket || !localPlayerId || health <= 0) return;
+    if (!socket || !localPlayerId || health <= 0 || match.phase !== "in_progress") return;
     socket.emit("player:hit", { targetId: localPlayerId, damage: 1000 });
-  }, [socket, localPlayerId, health]);
+  }, [socket, localPlayerId, health, match.phase]);
+
+  const isRoundActive = match.phase === "in_progress";
+  const bannerTitle =
+    match.phase === "countdown"
+      ? `ROUND ${match.roundNumber} STARTING`
+      : match.phase === "in_progress"
+      ? `ROUND ${match.roundNumber} LIVE`
+      : match.winnerName
+      ? `ROUND ${match.roundNumber} WINNER: ${match.winnerName.toUpperCase()}`
+      : `ROUND ${match.roundNumber} DRAW`;
+  const bannerMeta =
+    match.phase === "countdown"
+      ? `T-${match.countdownRemainingSeconds}s | First to ${match.scoreToWin}`
+      : match.phase === "in_progress"
+      ? `${formatClock(match.roundRemainingSeconds)} | First to ${match.scoreToWin}`
+      : `Next round in ${match.nextRoundInSeconds}s`;
 
   return (
     <div className="app-shell" onClick={handleShellClick}>
@@ -282,6 +322,9 @@ export default function App() {
         <div className="hud-top-left">
           <div className="game-title">AERO-CRAFT</div>
           <div className="hud-world-code">ROOM {worldCode}</div>
+          <div className={`hud-match-phase hud-match-phase--${match.phase}`}>
+            {match.phase.replace("_", " ").toUpperCase()}
+          </div>
           <div className="hud-stats">
             <span className={`connection-dot ${isConnected ? "connected" : ""}`} />
             <span>{metrics.playerCount} pilot{metrics.playerCount !== 1 ? "s" : ""}</span>
@@ -289,7 +332,14 @@ export default function App() {
         </div>
       )}
 
-      {worldCode && pointerLocked && (
+      {worldCode && (
+        <div className={`match-banner match-banner--${match.phase}`}>
+          <div className="match-banner__title">{bannerTitle}</div>
+          <div className="match-banner__meta">{bannerMeta}</div>
+        </div>
+      )}
+
+      {worldCode && pointerLocked && isRoundActive && (
         <FlightHUD
           health={health}
           speed={speed}
@@ -305,7 +355,7 @@ export default function App() {
       )}
 
       {worldCode && showScoreboard && (
-        <Scoreboard players={players} localPlayerId={localPlayerId} />
+        <Scoreboard players={players} localPlayerId={localPlayerId} match={match} />
       )}
 
       {!worldCode && (

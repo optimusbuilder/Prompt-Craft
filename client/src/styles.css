@@ -102,6 +102,81 @@ body {
   text-shadow: 0 0 8px rgba(93, 255, 126, 0.4);
 }
 
+.hud-match-phase {
+  display: inline-flex;
+  margin-bottom: 6px;
+  padding: 4px 9px 3px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(0, 0, 0, 0.45);
+  font-family: 'Rajdhani', monospace;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.hud-match-phase--lobby {
+  color: rgba(180, 190, 210, 0.9);
+}
+
+.hud-match-phase--countdown {
+  color: #ffd37f;
+  border-color: rgba(255, 211, 127, 0.35);
+}
+
+.hud-match-phase--in_progress {
+  color: #5dff7e;
+  border-color: rgba(93, 255, 126, 0.35);
+}
+
+.hud-match-phase--round_end {
+  color: #9fc1ff;
+  border-color: rgba(159, 193, 255, 0.35);
+}
+
+.match-banner {
+  position: fixed;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 12;
+  pointer-events: none;
+  text-align: center;
+  min-width: min(460px, calc(100vw - 24px));
+  padding: 8px 16px;
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(4px);
+}
+
+.match-banner__title {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: #ffffff;
+}
+
+.match-banner__meta {
+  margin-top: 4px;
+  font-family: 'Rajdhani', monospace;
+  font-size: 13px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.75);
+  letter-spacing: 0.08em;
+}
+
+.match-banner--countdown {
+  border-color: rgba(255, 211, 127, 0.35);
+}
+
+.match-banner--in_progress {
+  border-color: rgba(93, 255, 126, 0.35);
+}
+
+.match-banner--round_end {
+  border-color: rgba(159, 193, 255, 0.4);
+}
+
 /* ========== Flight HUD ========== */
 .flight-hud {
   position: absolute;
@@ -814,6 +889,15 @@ body {
   text-shadow: 0 0 10px rgba(93, 255, 126, 0.4);
   letter-spacing: 0.15em;
   margin: 0;
+}
+
+.scoreboard-subheader {
+  margin-top: 8px;
+  font-family: 'Rajdhani', monospace;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: rgba(255, 255, 255, 0.6);
 }
 
 .scoreboard-table {

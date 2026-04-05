@@ -32,6 +32,21 @@ export type KillEvent = {
   timestamp: number;
 };
 
+export type MatchPhase = "lobby" | "countdown" | "in_progress" | "round_end";
+
+export type MatchState = {
+  phase: MatchPhase;
+  roundNumber: number;
+  scoreToWin: number;
+  roundDurationSeconds: number;
+  countdownRemainingSeconds: number;
+  roundRemainingSeconds: number;
+  winnerId: string | null;
+  winnerName: string | null;
+  winnerColor: string | null;
+  nextRoundInSeconds: number;
+};
+
 export type WorldMetrics = {
   playerCount: number;
   projectileCount: number;
@@ -42,9 +57,17 @@ export type WorldSnapshot = {
   players: PlayerState[];
   projectiles: ProjectileState[];
   metrics: WorldMetrics;
+  match: MatchState;
   chatHistory: ChatMessage[];
   worldCode: string;
   recentKills: KillEvent[];
+};
+
+export type WorldStateUpdate = {
+  players: PlayerState[];
+  projectiles: ProjectileState[];
+  metrics: WorldMetrics;
+  match: MatchState;
 };
 
 export type ChatMessage = {
