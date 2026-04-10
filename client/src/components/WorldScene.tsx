@@ -14,8 +14,15 @@ type WorldSceneProps = {
   projectiles: ProjectileState[];
   explosions: { id: string; position: THREE.Vector3; createdAt: number }[];
   localPlayerId: string | null;
+  cameraMode: "first_person" | "third_person";
   pointerLocked: boolean;
   health: number;
+  localPlayerTransform: {
+    position: { x: number; y: number; z: number };
+    quaternion: { x: number; y: number; z: number; w: number };
+    velocity: { x: number; y: number; z: number };
+  } | null;
+  localPlayerColor: string;
   onPointerLockChange: (locked: boolean) => void;
   onPositionChange: (pos: { position: THREE.Vector3; quaternion: THREE.Quaternion; velocity: THREE.Vector3 }) => void;
   onFire: (pos: THREE.Vector3, vel: THREE.Vector3) => void;
@@ -27,8 +34,11 @@ export function WorldScene({
   projectiles,
   explosions,
   localPlayerId,
+  cameraMode,
   pointerLocked,
   health,
+  localPlayerTransform,
+  localPlayerColor,
   onPointerLockChange,
   onPositionChange,
   onFire,
@@ -43,11 +53,25 @@ export function WorldScene({
         
         <JetControls 
           locked={pointerLocked} 
+          cameraMode={cameraMode}
           onPositionChange={onPositionChange} 
           health={health}
           onFire={onFire}
           onCrash={onCrash}
         />
+
+        {cameraMode === "third_person" && localPlayerTransform && health > 0 && (
+          <Jet
+            key="local-player-jet"
+            color={localPlayerColor}
+            position={localPlayerTransform.position}
+            quaternion={localPlayerTransform.quaternion}
+            velocity={localPlayerTransform.velocity}
+            isLocal
+            name="YOU"
+            health={health}
+          />
+        )}
 
         {players.map(p => (
           p.id !== localPlayerId && p.health > 0 && (

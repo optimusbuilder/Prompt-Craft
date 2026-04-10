@@ -7,7 +7,21 @@ import { getTerrainHeight } from "../utils/terrain";
 const MAX_SPEED = 180;
 const MIN_SPEED = 50;
 
-export function JetControls({ locked, onPositionChange, health, onFire, onCrash }: { locked: boolean; onPositionChange: any; health: number; onFire: (pos: THREE.Vector3, vel: THREE.Vector3) => void; onCrash: () => void }) {
+export function JetControls({
+  locked,
+  cameraMode,
+  onPositionChange,
+  health,
+  onFire,
+  onCrash,
+}: {
+  locked: boolean;
+  cameraMode: "first_person" | "third_person";
+  onPositionChange: any;
+  health: number;
+  onFire: (pos: THREE.Vector3, vel: THREE.Vector3) => void;
+  onCrash: () => void;
+}) {
   const { camera } = useThree();
   const velocity = useRef(new THREE.Vector3());
   const position = useRef(new THREE.Vector3((Math.random() - 0.5) * 400, 500, (Math.random() - 0.5) * 400));
@@ -90,8 +104,18 @@ export function JetControls({ locked, onPositionChange, health, onFire, onCrash 
       }
     }
 
-    camera.position.copy(position.current);
-    camera.quaternion.copy(quaternion.current);
+    if (cameraMode === "third_person") {
+      const desiredPos = position.current
+        .clone()
+        .add(forward.clone().multiplyScalar(-16))
+        .add(new THREE.Vector3(0, 5.5, 0));
+      camera.position.lerp(desiredPos, 1 - Math.exp(-dt * 10));
+      camera.lookAt(position.current.clone().add(forward.clone().multiplyScalar(25)));
+    } else {
+      camera.position.copy(position.current);
+      camera.quaternion.copy(quaternion.current);
+    }
+
     if (localJetRef.current) {
       localJetRef.current.position.copy(position.current);
       localJetRef.current.quaternion.copy(quaternion.current);

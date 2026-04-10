@@ -60,6 +60,7 @@ export default function App() {
   const [worldCodeInput, setWorldCodeInput] = useState(() => getInitialWorldCode() ?? "");
   const [playerName, setPlayerName] = useState(() => (typeof localStorage !== "undefined" ? localStorage.getItem("playerName") || "" : ""));
   const [worldMenuMode, setWorldMenuMode] = useState<"menu" | "join">("menu");
+  const [cameraMode, setCameraMode] = useState<"first_person" | "third_person">("first_person");
   const [showScoreboard, setShowScoreboard] = useState(false);
   const [isChatting, setIsChatting] = useState(false);
   const [chatDraft, setChatDraft] = useState("");
@@ -70,6 +71,11 @@ export default function App() {
   const [heading, setHeading] = useState(0);
   const [kills, setKills] = useState(0);
   const [deaths, setDeaths] = useState(0);
+  const [localQuaternion, setLocalQuaternion] = useState<{ x: number; y: number; z: number; w: number } | null>(null);
+  const [localVelocity, setLocalVelocity] = useState<{ x: number; y: number; z: number } | null>(null);
+  const playersRef = useRef<PlayerState[]>([]);
+  const hitProjectileDebounceRef = useRef<Map<string, number>>(new Map());
+  const explosionIdCounterRef = useRef(0);
   const localPositionRef = useRef<{ x: number; y: number; z: number } | null>(null);
   const [localPosition, setLocalPosition] = useState<{ x: number; y: number; z: number } | null>(null);
   const engineStarted = useRef(false);
@@ -97,7 +103,10 @@ export default function App() {
   useEffect(() => {
     document.exitPointerLock?.();
     setPointerLocked(false);
+    playersRef.current = [];
+    hitProjectileDebounceRef.current.clear();
     setPlayers([]); setProjectiles([]); setMessages([]); setKillFeed([]); setExplosions([]);
+    setLocalPosition(null); setLocalQuaternion(null); setLocalVelocity(null);
     setLocalPlayerId(null); setIsConnected(false);
     setKills(0); setDeaths(0); setHealth(100);
     setMatch(DEFAULT_MATCH_STATE);
@@ -114,6 +123,7 @@ export default function App() {
     nextSocket.on("disconnect", () => { setIsConnected(false); });
 
     nextSocket.on("world:snapshot", (snapshot: WorldSnapshot) => {
+      playersRef.current = snapshot.players;
       setPlayers(snapshot.players);
       setProjectiles(snapshot.projectiles);
       setMetrics(snapshot.metrics);
@@ -134,6 +144,7 @@ export default function App() {
     });
 
     nextSocket.on("world:state", (state: WorldStateUpdate) => {
+      playersRef.current = state.players;
       setPlayers(state.players);
       setProjectiles(state.projectiles);
       setMetrics(state.metrics);
@@ -160,17 +171,18 @@ export default function App() {
         setHealth(0);
         playExplosion();
       }
-      setPlayers(prev => {
-        const p = prev.find(p => p.id === data.id);
-        if (p) {
-          setExplosions(ex => [...ex.slice(-20), { 
-            id: `exp_${data.id}_${Date.now()}`, 
-            position: new THREE.Vector3(p.position.x, p.position.y, p.position.z), 
-            createdAt: Date.now() 
-          }]);
-        }
-        return prev;
-      });
+      const destroyedPlayer = playersRef.current.find((p) => p.id === data.id);
+      if (destroyedPlayer) {
+        const now = Date.now();
+        setExplosions((prev) => [
+          ...prev.slice(-20),
+          {
+            id: `exp_${data.id}_${now}_${explosionIdCounterRef.current++}`,
+            position: new THREE.Vector3(destroyedPlayer.position.x, destroyedPlayer.position.y, destroyedPlayer.position.z),
+            createdAt: now,
+          },
+        ]);
+      }
     });
 
     nextSocket.on("player:respawned", (p: PlayerState) => {
@@ -196,9 +208,15 @@ export default function App() {
     if (!socket || health <= 0 || !localPlayerId || match.phase !== "in_progress") return;
     const localP = players.find(p => p.id === localPlayerId);
     if (!localP) return;
+    const now = Date.now();
+
+    for (const [projectileId, expiresAt] of hitProjectileDebounceRef.current.entries()) {
+      if (expiresAt <= now) hitProjectileDebounceRef.current.delete(projectileId);
+    }
 
     for (const p of projectiles) {
       if (p.ownerId === localPlayerId) continue;
+      if ((hitProjectileDebounceRef.current.get(p.id) ?? 0) > now) continue;
       const age = (Date.now() - p.createdAt) / 1000;
       const currentPos = new THREE.Vector3(
         p.position.x + p.velocity.x * age,
@@ -212,8 +230,8 @@ export default function App() {
         Math.pow(currentPos.z - localP.position.z, 2)
       );
       if (dist < 8) {
+        hitProjectileDebounceRef.current.set(p.id, now + 3500);
         socket.emit("player:hit", { targetId: localPlayerId, damage: 20 });
-        setHealth(h => Math.max(0, h - 20));
         playDamage();
       }
     }
@@ -238,6 +256,9 @@ export default function App() {
           setIsChatting(true);
           setPointerLocked(false);
         }
+      } else if ((e.key === "v" || e.key === "V") && !isChatting) {
+        e.preventDefault();
+        setCameraMode((prev) => (prev === "first_person" ? "third_person" : "first_person"));
       }
     };
     const handleKeyUp = (e: KeyboardEvent) => {
@@ -252,7 +273,7 @@ export default function App() {
       document.removeEventListener("keydown", handleKeyDown);
       document.removeEventListener("keyup", handleKeyUp);
     };
-  }, []);
+  }, [pointerLocked, isChatting]);
 
   const handlePlayerMove = useCallback((state: any) => {
     const spd = state.velocity.length();
@@ -266,6 +287,8 @@ export default function App() {
     
     localPositionRef.current = { x: state.position.x, y: state.position.y, z: state.position.z };
     setLocalPosition({ x: state.position.x, y: state.position.y, z: state.position.z });
+    setLocalQuaternion({ x: state.quaternion.x, y: state.quaternion.y, z: state.quaternion.z, w: state.quaternion.w });
+    setLocalVelocity({ x: state.velocity.x, y: state.velocity.y, z: state.velocity.z });
 
     updateEngine(spd);
     socket?.emit("player:input", state);
@@ -285,7 +308,6 @@ export default function App() {
     socket.emit("player:hit", { targetId: localPlayerId, damage: 1000 });
   }, [socket, localPlayerId, health, match.phase]);
 
-  const isRoundActive = match.phase === "in_progress";
   const bannerTitle =
     match.phase === "countdown"
       ? `ROUND ${match.roundNumber} STARTING`
@@ -296,10 +318,10 @@ export default function App() {
       : `ROUND ${match.roundNumber} DRAW`;
   const bannerMeta =
     match.phase === "countdown"
-      ? `T-${match.countdownRemainingSeconds}s | First to ${match.scoreToWin}`
+      ? `Weapons hot in T-${match.countdownRemainingSeconds}s | First to ${match.scoreToWin}`
       : match.phase === "in_progress"
       ? `${formatClock(match.roundRemainingSeconds)} | First to ${match.scoreToWin}`
-      : `Next round in ${match.nextRoundInSeconds}s`;
+      : `Weapons disabled | Next round in ${match.nextRoundInSeconds}s`;
 
   return (
     <div className="app-shell" onClick={handleShellClick}>
@@ -309,8 +331,15 @@ export default function App() {
           projectiles={projectiles}
           explosions={explosions}
           localPlayerId={localPlayerId}
+          cameraMode={cameraMode}
           pointerLocked={pointerLocked}
           health={health}
+          localPlayerTransform={
+            localPosition && localQuaternion && localVelocity
+              ? { position: localPosition, quaternion: localQuaternion, velocity: localVelocity }
+              : null
+          }
+          localPlayerColor={players.find((p) => p.id === localPlayerId)?.color ?? "#ffffff"}
           onPointerLockChange={handlePointerLockChange}
           onPositionChange={handlePlayerMove}
           onFire={handleFire}
@@ -339,7 +368,7 @@ export default function App() {
         </div>
       )}
 
-      {worldCode && pointerLocked && isRoundActive && (
+      {worldCode && pointerLocked && (
         <FlightHUD
           health={health}
           speed={speed}
@@ -390,6 +419,7 @@ export default function App() {
                 <kbd>Shift</kbd><span>Boost</span>
                 <kbd>Ctrl</kbd><span>Brake</span>
                 <kbd>Click</kbd><span>Fire</span>
+                <kbd>V</kbd><span>Camera (FP/TP)</span>
               </div>
             </div>
           </div>
